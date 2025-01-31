@@ -44,11 +44,15 @@ def display_qr_code():
     qr_image = generate_qr_code(APP_URL)
     st.sidebar.image(qr_image, caption="Scan to open the app", use_container_width=True)  # Fixed: Replaced use_column_width with use_container_width
 
-# Function to extract text from a web page
 def extract_text_from_url(url):
     try:
-        # Fetch the web page content
-        response = requests.get(url)
+        # Simulate a browser request by adding headers
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+
+        # Fetch the web page content with headers
+        response = requests.get(url, headers=headers)
         response.raise_for_status()  # Raise an error for bad status codes
 
         # Parse the HTML content using BeautifulSoup
