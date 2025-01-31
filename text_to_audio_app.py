@@ -1,5 +1,5 @@
 import streamlit as st
-import pyttsx3
+from gtts import gTTS
 import os
 import pdfplumber
 import io
@@ -50,16 +50,16 @@ def extract_main_text_from_pdf(uploaded_file):
         return None
 
 def generate_audio(text):
-    """Generates and returns an audio file from text using pyttsx3 (offline TTS)."""
+    """Generates and returns an audio file using Google TTS (gTTS)."""
     try:
-        engine = pyttsx3.init()
+        # Convert text to speech using gTTS
+        tts = gTTS(text=text, lang="en")
         
-        # Save the speech to a temporary file
-        audio_file_path = 'temp_audio.mp3'
-        engine.save_to_file(text, audio_file_path)
-        engine.runAndWait()
+        # Save to temporary file
+        audio_file_path = "temp_audio.mp3"
+        tts.save(audio_file_path)
 
-        # Read the audio file into a BytesIO stream
+        # Load the audio file into a BytesIO stream
         audio_file = io.BytesIO()
         with open(audio_file_path, 'rb') as f:
             audio_file.write(f.read())
