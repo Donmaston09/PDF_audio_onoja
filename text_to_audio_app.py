@@ -123,6 +123,8 @@ def autoplay_audio(audio_files):
                 if (currentIndex < audioFiles.length) {{
                     audioPlayer.src = "data:audio/mp3;base64," + audioFiles[currentIndex];
                     audioPlayer.play();
+                }} else {{
+                    audioPlayer.remove(); // Remove the audio player when done
                 }}
             }});
         </script>
