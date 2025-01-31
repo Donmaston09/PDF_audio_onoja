@@ -42,7 +42,7 @@ def generate_qr_code(link):
 def display_qr_code():
     st.sidebar.subheader("Share this App")
     qr_image = generate_qr_code(APP_URL)
-    st.sidebar.image(qr_image, caption="Scan to open the app", use_column_width=True)
+    st.sidebar.image(qr_image, caption="Scan to open the app", use_container_width=True)  # Fixed: Replaced use_column_width with use_container_width
 
 # Function to extract text from a web page
 def extract_text_from_url(url):
