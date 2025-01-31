@@ -15,7 +15,7 @@ EMAIL = "a.onoja@surrey.ac.uk"
 INSTITUTION = "University of Surrey, UK"
 
 # Streamlit App Deployment URL (Replace with your actual Streamlit Cloud link)
-APP_URL = "https://pdfaudioonoja-gpd5kkrbgzfwewkvtwmcvb.streamlit.app/"
+APP_URL = "https://your-username-your-app-name.streamlit.app/"
 
 # Constants
 AVERAGE_WORDS_PER_MINUTE = 150
@@ -37,7 +37,7 @@ def generate_qr_code(link):
 def display_qr_code():
     st.sidebar.subheader("Share this App")
     qr_image = generate_qr_code(APP_URL)
-    st.sidebar.image(qr_image, caption="Scan to open the app", use_column_width=True)
+    st.sidebar.image(qr_image, caption="Scan to open the app", use_container_width=True)
 
 @st.cache_data
 def extract_main_text_from_pdf(uploaded_file):
