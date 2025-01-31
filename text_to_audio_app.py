@@ -102,22 +102,32 @@ def play_audio(pages, start_page, end_page, accent, voice_gender):
 
 def autoplay_audio(audio_files):
     """Function to auto-play audio files sequentially using JavaScript."""
-    for i, audio_file in enumerate(audio_files):
-        audio_bytes = audio_file.getvalue()
-        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
-        audio_html = f"""
-            <audio id="audio{i}" controls autoplay>
-                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-            </audio>
-            <script>
-                document.getElementById("audio{i}").addEventListener("ended", function() {{
-                    if ({i} < {len(audio_files) - 1}) {{
-                        document.getElementById("audio{i + 1}").play();
-                    }}
-                }});
-            </script>
-        """
-        st.markdown(audio_html, unsafe_allow_html=True)
+    if not audio_files:
+        return
+
+    # Create a list of base64-encoded audio files
+    audio_base64_list = [base64.b64encode(audio_file.getvalue()).decode("utf-8") for audio_file in audio_files]
+
+    # Generate JavaScript code to play audio files sequentially
+    js_code = f"""
+        <audio id="audioPlayer" controls autoplay>
+            <source src="data:audio/mp3;base64,{audio_base64_list[0]}" type="audio/mp3">
+        </audio>
+        <script>
+            let audioFiles = {audio_base64_list};
+            let currentIndex = 0;
+            const audioPlayer = document.getElementById("audioPlayer");
+
+            audioPlayer.addEventListener("ended", function() {{
+                currentIndex++;
+                if (currentIndex < audioFiles.length) {{
+                    audioPlayer.src = "data:audio/mp3;base64," + audioFiles[currentIndex];
+                    audioPlayer.play();
+                }}
+            }});
+        </script>
+    """
+    st.markdown(js_code, unsafe_allow_html=True)
 
 def calculate_page_range(pages, listening_time):
     """Calculates the number of pages that can be read within the selected listening time."""
@@ -206,7 +216,7 @@ def main():
                 if play_button:
                     st.session_state.is_playing = True
                     play_audio(pages, start_page, end_page + 1, accent, voice_gender)  # Generate audio files
-                    autoplay_audio(st.session_state.audio_files)  # Auto-play audio files
+                    autoplay_audio(st.session_state.audio_files)  # Auto-play audio files sequentially
 
 if __name__ == "__main__":
     main()
