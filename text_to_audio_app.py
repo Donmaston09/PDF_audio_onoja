@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from gtts import gTTS
 import os
 import pdfplumber
@@ -89,7 +90,7 @@ def generate_audio(text, accent, voice_gender):
         return None
 
 def play_audio(pages, start_page, end_page, accent, voice_gender):
-    """Function to play the audio for selected pages with the chosen accent and voice gender."""
+    """Plays the audio for selected pages with auto-next feature."""
     while st.session_state.current_page < end_page:
         if not st.session_state.is_playing:
             break
@@ -100,8 +101,27 @@ def play_audio(pages, start_page, end_page, accent, voice_gender):
 
         if audio_file:
             st.audio(audio_file, format="audio/mp3")
-            st.session_state.current_page += 1
-            time.sleep(1)  # Add delay for sequential audio processing
+
+            # JavaScript to auto-click a hidden button after audio ends
+            autoplay_script = """
+            <script>
+                var audio = document.querySelector("audio");
+                if (audio) {
+                    audio.onended = function() {
+                        var nextButton = document.getElementById("next_page_button");
+                        if (nextButton) { nextButton.click(); }
+                    };
+                }
+            </script>
+            """
+            components.html(autoplay_script, height=0)
+
+            # Hidden button to trigger next page
+            if st.button("Next Page", key=f"next_{st.session_state.current_page}"):
+                st.session_state.current_page += 1
+                st.experimental_rerun()
+
+            time.sleep(1)  # Short delay before moving to next page
 
 def calculate_page_range(pages, listening_time):
     """Calculates the number of pages that can be read within the selected listening time."""
@@ -138,14 +158,7 @@ def main():
             )
 
             # Convert listening time to minutes
-            if listening_time == "30 minutes":
-                listening_minutes = 0.5
-            elif listening_time == "1 hour":
-                listening_minutes = 1
-            elif listening_time == "2 hours":
-                listening_minutes = 2
-            else:
-                listening_minutes = 3  # Default for "More than 2 hours"
+            listening_minutes = {"30 minutes": 0.5, "1 hour": 1, "2 hours": 2, "More than 2 hours": 3}[listening_time]
 
             # Calculate the number of pages to read based on listening time
             pages_to_read = calculate_page_range(pages, listening_minutes)
