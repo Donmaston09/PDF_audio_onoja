@@ -12,6 +12,9 @@ AUTHOR = "Anthony Onoja"
 EMAIL = "a.onoja@surrey.ac.uk"
 INSTITUTION = "University of Surrey, UK"
 
+# Constants
+AVERAGE_WORDS_PER_MINUTE = 150  # Average reading speed in words per minute
+
 # Initialize session state variables
 if 'is_playing' not in st.session_state:
     st.session_state.is_playing = False
@@ -26,7 +29,7 @@ def extract_main_text_from_pdf(uploaded_file):
             pages = []
             for page in pdf.pages:
                 text = page.extract_text() or ""
-                
+
                 # Remove header/footer (if any)
                 lines = text.split("\n")
                 lines = [line for line in lines if len(line) > 5]  # Ignore very short lines
@@ -34,11 +37,6 @@ def extract_main_text_from_pdf(uploaded_file):
                 # Combine cleaned lines
                 clean_text = " ".join(lines)
 
-                # **Extract only main sections**
-                if "abstract" in clean_text.lower():
-                    abstract_start = clean_text.lower().index("abstract")
-                    clean_text = clean_text[abstract_start:]  # Start from abstract
-                    
                 # Exclude "References" section if found
                 clean_text = re.split(r"\bReferences\b", clean_text, flags=re.IGNORECASE)[0]
 
@@ -49,12 +47,30 @@ def extract_main_text_from_pdf(uploaded_file):
         st.error(f"Error extracting text: {e}")
         return None
 
-def generate_audio(text):
-    """Generates and returns an audio file using Google TTS (gTTS)."""
+def generate_audio(text, accent, voice_gender):
+    """Generates and returns an audio file using Google TTS (gTTS) with selected accent and voice gender."""
     try:
+        # Map accents to gTTS language codes
+        accent_map = {
+            "British English": "en-UK",
+            "American English": "en-US",
+            "Australian English": "en-AU"
+        }
+
+        # Map voice gender to gTTS top-level domains (tld)
+        # Note: gTTS does not directly support male/female voices, but tld can influence voice characteristics
+        voice_gender_map = {
+            "Male": "co.uk",  # British English domain (often male voice)
+            "Female": "com.au"  # Australian English domain (often female voice)
+        }
+
         # Convert text to speech using gTTS
-        tts = gTTS(text=text, lang="en")
-        
+        tts = gTTS(
+            text=text,
+            lang=accent_map[accent],
+            tld=voice_gender_map[voice_gender]
+        )
+
         # Save to temporary file
         audio_file_path = "temp_audio.mp3"
         tts.save(audio_file_path)
@@ -72,19 +88,30 @@ def generate_audio(text):
         st.error(f"Error generating audio: {e}")
         return None
 
-def play_audio(pages):
-    """Function to play the audio page by page."""
-    while st.session_state.current_page < len(pages):
+def play_audio(pages, start_page, end_page, accent, voice_gender):
+    """Function to play the audio for selected pages with the chosen accent and voice gender."""
+    while st.session_state.current_page < end_page:
         if not st.session_state.is_playing:
             break
 
         text = pages[st.session_state.current_page]
-        audio_file = generate_audio(text)
+        with st.spinner(f"Generating audio for Page {st.session_state.current_page + 1}..."):
+            audio_file = generate_audio(text, accent, voice_gender)
 
         if audio_file:
             st.audio(audio_file, format="audio/mp3")
             st.session_state.current_page += 1
             time.sleep(1)  # Add delay for sequential audio processing
+
+def calculate_page_range(pages, listening_time):
+    """Calculates the number of pages that can be read within the selected listening time."""
+    total_words = sum(len(page.split()) for page in pages)
+    total_minutes = listening_time * 60  # Convert hours to minutes
+    words_per_page = total_words / len(pages)
+
+    # Calculate the number of pages that can be read in the selected time
+    pages_to_read = int((AVERAGE_WORDS_PER_MINUTE * total_minutes) / words_per_page)
+    return min(pages_to_read, len(pages))  # Ensure it doesn't exceed total pages
 
 def main():
     """Main function to run the Streamlit app."""
@@ -99,22 +126,70 @@ def main():
             pages = extract_main_text_from_pdf(uploaded_file)
 
         if pages:
-            # Display extracted text
-            for i, text in enumerate(pages):
-                st.subheader(f"Page {i + 1}")
-                st.text_area(f"Extracted Main Text from Page {i + 1}:", text, height=150)
+            st.success("Text extraction complete!")
+            total_pages = len(pages)
+
+            # Display listening time selection
+            st.subheader("Listening Time")
+            listening_time = st.selectbox(
+                "How long do you want to listen?",
+                ["30 minutes", "1 hour", "2 hours", "More than 2 hours"],
+                index=1
+            )
+
+            # Convert listening time to minutes
+            if listening_time == "30 minutes":
+                listening_minutes = 0.5
+            elif listening_time == "1 hour":
+                listening_minutes = 1
+            elif listening_time == "2 hours":
+                listening_minutes = 2
+            else:
+                listening_minutes = 3  # Default for "More than 2 hours"
+
+            # Calculate the number of pages to read based on listening time
+            pages_to_read = calculate_page_range(pages, listening_minutes)
+
+            # Display page selection slider
+            st.subheader("Select Pages to Listen To")
+            start_page, end_page = st.slider(
+                "Select page range:",
+                min_value=1,
+                max_value=total_pages,
+                value=(1, pages_to_read),  # Default to calculated pages
+                key="page_range"
+            )
+
+            # Adjust to zero-based indexing
+            start_page -= 1
+            end_page -= 1
+
+            # Display accent and voice gender options
+            st.subheader("Audio Settings")
+            accent = st.selectbox(
+                "Select Accent:",
+                ["British English", "American English", "Australian English"],
+                index=0
+            )
+            voice_gender = st.selectbox(
+                "Select Voice Gender:",
+                ["Male", "Female"],
+                index=0
+            )
 
             # Play/Stop buttons
             if st.session_state.is_playing:
                 stop_button = st.button("Stop Audio")
                 if stop_button:
                     st.session_state.is_playing = False
-                    st.session_state.current_page = 0  # Reset the page counter
+                    st.session_state.current_page = start_page  # Reset to the start of the selected range
+                    st.experimental_rerun()  # Refresh the app to stop audio playback
             else:
                 play_button = st.button("Play Audio")
                 if play_button:
                     st.session_state.is_playing = True
-                    play_audio(pages)  # Start playing audio sequentially
+                    st.session_state.current_page = start_page  # Start from the selected page
+                    play_audio(pages, start_page, end_page + 1, accent, voice_gender)  # Play audio for the selected range
 
 if __name__ == "__main__":
     main()
