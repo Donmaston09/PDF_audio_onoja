@@ -4,7 +4,6 @@ from gtts import gTTS
 import os
 import pdfplumber
 import io
-import time
 import re
 
 # App Information
@@ -26,72 +25,44 @@ if 'next_clicked' not in st.session_state:
 
 @st.cache_data
 def extract_main_text_from_pdf(uploaded_file):
-    """Extracts main body text from a PDF, ignoring author names, footers, and headers."""
+    """Extracts main body text from a PDF, ignoring headers and footers."""
     try:
         with pdfplumber.open(uploaded_file) as pdf:
             pages = []
             for page in pdf.pages:
                 text = page.extract_text() or ""
-
-                # Remove header/footer (if any)
-                lines = text.split("\n")
-                lines = [line for line in lines if len(line) > 5]  # Ignore very short lines
-
-                # Combine cleaned lines
+                lines = [line for line in text.split("\n") if len(line) > 5]
                 clean_text = " ".join(lines)
-
-                # Exclude "References" section if found
                 clean_text = re.split(r"\bReferences\b", clean_text, flags=re.IGNORECASE)[0]
-
                 pages.append(clean_text.strip())
-
         return pages
     except Exception as e:
         st.error(f"Error extracting text: {e}")
         return None
 
 def generate_audio(text, accent, voice_gender):
-    """Generates and returns an audio file using Google TTS (gTTS) with selected accent and voice gender."""
+    """Generates an audio file using Google TTS."""
     try:
-        # Map accents to gTTS language codes
-        accent_map = {
-            "British English": "en-UK",
-            "American English": "en-US",
-            "Australian English": "en-AU"
-        }
+        accent_map = {"British English": "en-UK", "American English": "en-US", "Australian English": "en-AU"}
+        voice_gender_map = {"Male": "co.uk", "Female": "com.au"}
+        tts = gTTS(text=text, lang=accent_map[accent], tld=voice_gender_map[voice_gender])
 
-        # Map voice gender to gTTS top-level domains (tld)
-        voice_gender_map = {
-            "Male": "co.uk",
-            "Female": "com.au"
-        }
-
-        # Convert text to speech using gTTS
-        tts = gTTS(
-            text=text,
-            lang=accent_map[accent],
-            tld=voice_gender_map[voice_gender]
-        )
-
-        # Save to temporary file
         audio_file_path = "temp_audio.mp3"
         tts.save(audio_file_path)
 
-        # Load the audio file into a BytesIO stream
         audio_file = io.BytesIO()
         with open(audio_file_path, 'rb') as f:
             audio_file.write(f.read())
 
-        os.remove(audio_file_path)  # Clean up temporary file
-        audio_file.seek(0)  # Reset file pointer
-
+        os.remove(audio_file_path)
+        audio_file.seek(0)
         return audio_file
     except Exception as e:
         st.error(f"Error generating audio: {e}")
         return None
 
 def play_audio(pages, start_page, end_page, accent, voice_gender):
-    """Plays the audio for selected pages with auto-next feature."""
+    """Plays the audio for selected pages and enables auto-next functionality."""
     if start_page <= st.session_state.current_page < end_page:
         text = pages[st.session_state.current_page]
         with st.spinner(f"Generating audio for Page {st.session_state.current_page + 1}..."):
@@ -100,13 +71,13 @@ def play_audio(pages, start_page, end_page, accent, voice_gender):
         if audio_file:
             st.audio(audio_file, format="audio/mp3")
 
-            # JavaScript to auto-click the next button
+            # JavaScript to auto-click the next button when audio ends
             autoplay_script = """
             <script>
                 var audio = document.querySelector("audio");
                 if (audio) {
                     audio.onended = function() {
-                        var nextButton = document.getElementById("next_page_button");
+                        var nextButton = window.parent.document.getElementById("next_page_button");
                         if (nextButton) { nextButton.click(); }
                     };
                 }
@@ -130,7 +101,7 @@ def main():
             st.success("Text extraction complete!")
             total_pages = len(pages)
 
-            # Display listening time selection
+            # Listening Time Selection
             st.subheader("Listening Time")
             listening_time = st.selectbox(
                 "How long do you want to listen?",
@@ -140,11 +111,10 @@ def main():
 
             # Convert listening time to minutes
             listening_minutes = {"30 minutes": 0.5, "1 hour": 1, "2 hours": 2, "More than 2 hours": 3}[listening_time]
+            pages_to_read = min(len(pages), int((AVERAGE_WORDS_PER_MINUTE * listening_minutes * 60) / 
+                                                 (sum(len(page.split()) for page in pages) / len(pages))))
 
-            # Calculate the number of pages to read based on listening time
-            pages_to_read = min(len(pages), int((AVERAGE_WORDS_PER_MINUTE * listening_minutes * 60) / (sum(len(page.split()) for page in pages) / len(pages))))
-
-            # Display page selection slider
+            # Page selection slider
             st.subheader("Select Pages to Listen To")
             start_page, end_page = st.slider(
                 "Select page range:",
@@ -154,45 +124,35 @@ def main():
                 key="page_range"
             )
 
-            # Adjust to zero-based indexing
-            start_page -= 1
+            start_page -= 1  # Convert to zero-based index
             end_page -= 1
 
-            # Display accent and voice gender options
+            # Audio Settings
             st.subheader("Audio Settings")
-            accent = st.selectbox(
-                "Select Accent:",
-                ["British English", "American English", "Australian English"],
-                index=0
-            )
-            voice_gender = st.selectbox(
-                "Select Voice Gender:",
-                ["Male", "Female"],
-                index=0
-            )
+            accent = st.selectbox("Select Accent:", ["British English", "American English", "Australian English"], index=0)
+            voice_gender = st.selectbox("Select Voice Gender:", ["Male", "Female"], index=0)
 
             # Play/Stop buttons
             if st.session_state.is_playing:
                 if st.button("Stop Audio", key="stop_audio"):
                     st.session_state.is_playing = False
                     st.session_state.current_page = start_page
-                    st.experimental_rerun()
+                    st.session_state.next_clicked = False
             else:
                 if st.button("Play Audio", key="play_audio"):
                     st.session_state.is_playing = True
                     st.session_state.current_page = start_page
                     st.session_state.next_clicked = False
-                    st.experimental_rerun()
 
-            # Play audio and handle page navigation
+            # Play audio and handle navigation
             if st.session_state.is_playing:
                 play_audio(pages, start_page, end_page + 1, accent, voice_gender)
 
-                # Hidden "Next Page" button (triggered automatically)
+                # "Next Page" button (auto-clicked via JS)
                 if st.button("Next Page", key="next_page_button"):
                     if st.session_state.current_page < end_page:
                         st.session_state.current_page += 1
-                        st.experimental_rerun()
+                        st.session_state.next_clicked = True
 
 if __name__ == "__main__":
     main()
