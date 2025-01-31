@@ -5,6 +5,7 @@ import pdfplumber
 import io
 import time
 import re
+import base64
 
 # App Information
 APP_NAME = "PDF Speech Assistant"
@@ -20,6 +21,8 @@ if 'is_playing' not in st.session_state:
     st.session_state.is_playing = False
 if 'current_page' not in st.session_state:
     st.session_state.current_page = 0
+if 'audio_files' not in st.session_state:
+    st.session_state.audio_files = []
 
 @st.cache_data
 def extract_main_text_from_pdf(uploaded_file):
@@ -89,19 +92,32 @@ def generate_audio(text, accent, voice_gender):
         return None
 
 def play_audio(pages, start_page, end_page, accent, voice_gender):
-    """Function to play the audio for selected pages with the chosen accent and voice gender."""
-    while st.session_state.current_page < end_page:
-        if not st.session_state.is_playing:
-            break
-
-        text = pages[st.session_state.current_page]
-        with st.spinner(f"Generating audio for Page {st.session_state.current_page + 1}..."):
-            audio_file = generate_audio(text, accent, voice_gender)
-
+    """Function to generate audio files for selected pages and store them in session state."""
+    st.session_state.audio_files = []
+    for i in range(start_page, end_page):
+        text = pages[i]
+        audio_file = generate_audio(text, accent, voice_gender)
         if audio_file:
-            st.audio(audio_file, format="audio/mp3")
-            st.session_state.current_page += 1
-            time.sleep(1)  # Add delay for sequential audio processing
+            st.session_state.audio_files.append(audio_file)
+
+def autoplay_audio(audio_files):
+    """Function to auto-play audio files sequentially using JavaScript."""
+    for i, audio_file in enumerate(audio_files):
+        audio_bytes = audio_file.getvalue()
+        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+        audio_html = f"""
+            <audio id="audio{i}" controls autoplay>
+                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+            </audio>
+            <script>
+                document.getElementById("audio{i}").addEventListener("ended", function() {{
+                    if ({i} < {len(audio_files) - 1}) {{
+                        document.getElementById("audio{i + 1}").play();
+                    }}
+                }});
+            </script>
+        """
+        st.markdown(audio_html, unsafe_allow_html=True)
 
 def calculate_page_range(pages, listening_time):
     """Calculates the number of pages that can be read within the selected listening time."""
@@ -183,13 +199,14 @@ def main():
                 if stop_button:
                     st.session_state.is_playing = False
                     st.session_state.current_page = start_page  # Reset to the start of the selected range
+                    st.session_state.audio_files = []  # Clear audio files
                     st.experimental_rerun()  # Refresh the app to stop audio playback
             else:
                 play_button = st.button("Play Audio")
                 if play_button:
                     st.session_state.is_playing = True
-                    st.session_state.current_page = start_page  # Start from the selected page
-                    play_audio(pages, start_page, end_page + 1, accent, voice_gender)  # Play audio for the selected range
+                    play_audio(pages, start_page, end_page + 1, accent, voice_gender)  # Generate audio files
+                    autoplay_audio(st.session_state.audio_files)  # Auto-play audio files
 
 if __name__ == "__main__":
     main()
