@@ -7,6 +7,7 @@ import pdfplumber
 import io
 import re
 import time
+import base64
 
 # App Information
 APP_NAME = "PDF Speech Assistant"
@@ -25,6 +26,8 @@ if 'is_playing' not in st.session_state:
     st.session_state.is_playing = False
 if 'current_page' not in st.session_state:
     st.session_state.current_page = 0
+if 'audio_files' not in st.session_state:
+    st.session_state.audio_files = []
 
 # Function to generate QR Code
 def generate_qr_code(link):
@@ -74,16 +77,42 @@ def generate_audio(text, accent, voice_gender):
         return None
 
 def play_audio(pages, start_page, end_page, accent, voice_gender):
-    while st.session_state.current_page < end_page:
-        if not st.session_state.is_playing:
-            break
-        text = pages[st.session_state.current_page]
-        with st.spinner(f"Generating audio for Page {st.session_state.current_page + 1}..."):
-            audio_file = generate_audio(text, accent, voice_gender)
+    st.session_state.audio_files = []
+    for i in range(start_page, end_page + 1):
+        text = pages[i]
+        audio_file = generate_audio(text, accent, voice_gender)
         if audio_file:
-            st.audio(audio_file, format="audio/mp3")
-            st.session_state.current_page += 1
-            time.sleep(1)
+            st.session_state.audio_files.append(audio_file)
+
+def autoplay_audio(audio_files):
+    if not audio_files:
+        return
+
+    # Create a list of base64-encoded audio files
+    audio_base64_list = [base64.b64encode(audio_file.getvalue()).decode("utf-8") for audio_file in audio_files]
+
+    # Generate JavaScript code to play audio files sequentially
+    js_code = f"""
+        <audio id="audioPlayer" controls autoplay>
+            <source src="data:audio/mp3;base64,{audio_base64_list[0]}" type="audio/mp3">
+        </audio>
+        <script>
+            let audioFiles = {audio_base64_list};
+            let currentIndex = 0;
+            const audioPlayer = document.getElementById("audioPlayer");
+
+            audioPlayer.addEventListener("ended", function() {{
+                currentIndex++;
+                if (currentIndex < audioFiles.length) {{
+                    audioPlayer.src = "data:audio/mp3;base64," + audioFiles[currentIndex];
+                    audioPlayer.play();
+                }} else {{
+                    audioPlayer.remove(); // Remove the audio player when done
+                }}
+            }});
+        </script>
+    """
+    components.html(js_code, height=100)
 
 def main():
     st.title(APP_NAME)
@@ -113,7 +142,8 @@ def main():
                 if st.button("Play Audio"):
                     st.session_state.is_playing = True
                     st.session_state.current_page = start_page
-                    play_audio(pages, start_page, end_page + 1, accent, voice_gender)
+                    play_audio(pages, start_page, end_page, accent, voice_gender)
+                    autoplay_audio(st.session_state.audio_files)
 
 if __name__ == "__main__":
     main()
