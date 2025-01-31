@@ -3,4 +3,5 @@ pyttsx3
 pdfplumber
 beautifulsoup4
 gtts
+bs4
 pydub  # Optional, if you're planning to handle more audio formats
