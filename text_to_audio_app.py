@@ -46,20 +46,17 @@ def display_qr_code():
 
 def extract_text_from_url(url):
     try:
-        # Simulate a browser request by adding headers
+        # Try with a different User-Agent first
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15"
         }
-
-        # Fetch the web page content with headers
         response = requests.get(url, headers=headers)
-        response.raise_for_status()  # Raise an error for bad status codes
+        response.raise_for_status()
 
         # Parse the HTML content using BeautifulSoup
         soup = BeautifulSoup(response.text, "html.parser")
 
         # Extract the main content (e.g., article body)
-        # This is a basic example; you may need to customize it for specific websites
         main_content = soup.find("article") or soup.find("main") or soup.find("body")
         if main_content:
             # Remove script and style tags
@@ -75,9 +72,40 @@ def extract_text_from_url(url):
             st.error("Could not extract main content from the web page.")
             return None
     except Exception as e:
-        st.error(f"Error extracting text from URL: {e}")
-        return None
+        st.warning(f"Failed with headers. Trying with Selenium... Error: {e}")
+        try:
+            # Fallback to Selenium for dynamic content
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
 
+            options = Options()
+            options.add_argument("--headless")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+
+            driver = webdriver.Chrome(options=options)
+            driver.get(url)
+            time.sleep(5)
+            page_source = driver.page_source
+            driver.quit()
+
+            soup = BeautifulSoup(page_source, "html.parser")
+            main_content = soup.find("article") or soup.find("main") or soup.find("body")
+            if main_content:
+                for tag in main_content(["script", "style"]):
+                    tag.decompose()
+                text = main_content.get_text(separator="\n")
+                lines = [line.strip() for line in text.split("\n") if line.strip()]
+                clean_text = "\n".join(lines)
+                return clean_text
+            else:
+                st.error("Could not extract main content from the web page.")
+                return None
+        except Exception as e:
+            st.error(f"Error extracting text from URL: {e}")
+            return None
 @st.cache_data
 def extract_main_text_from_pdf(uploaded_file):
     try:
