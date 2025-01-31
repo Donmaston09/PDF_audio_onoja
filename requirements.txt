@@ -2,6 +2,7 @@ streamlit
 pyttsx3
 pdfplumber
 beautifulsoup4
+selenium
 gtts
 bs4
 pydub  # Optional, if you're planning to handle more audio formats
