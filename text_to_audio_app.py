@@ -1,9 +1,9 @@
 import streamlit as st
-import pyttsx3
 import os
 import pdfplumber
 import io
 import time
+from gtts import gTTS
 
 # App Information
 APP_NAME = "PDF Speech Assistant"
@@ -23,29 +23,23 @@ def extract_text_from_pdf(uploaded_file):
     """Extracts text from a PDF file using pdfplumber."""
     try:
         with pdfplumber.open(uploaded_file) as pdf:
-            pages = []
-            for page in pdf.pages:
-                text = page.extract_text() or ""
-                pages.append(text)
+            pages = [page.extract_text() or "" for page in pdf.pages]
         return pages
     except Exception as e:
         st.error(f"Error extracting text: {e}")
         return None
 
+
 def generate_audio(text):
-    """Generates and returns an audio file from text using pyttsx3 (offline TTS)."""
+    """Generates and returns an audio file from text using gTTS."""
     try:
-        # Initialize the TTS engine
-        engine = pyttsx3.init()
+        tts = gTTS(text=text, lang="en")
+        audio_file_path = "temp_audio.mp3"
+        tts.save(audio_file_path)
 
-        # Save the speech to a temporary file
-        audio_file_path = 'temp_audio.mp3'
-        engine.save_to_file(text, audio_file_path)
-        engine.runAndWait()
-
-        # Read the audio file into a BytesIO stream
+        # Read the file into a BytesIO stream
         audio_file = io.BytesIO()
-        with open(audio_file_path, 'rb') as f:
+        with open(audio_file_path, "rb") as f:
             audio_file.write(f.read())
 
         os.remove(audio_file_path)  # Clean up temporary file
@@ -55,6 +49,7 @@ def generate_audio(text):
     except Exception as e:
         st.error(f"Error generating audio: {e}")
         return None
+
 
 def play_audio(pages):
     """Function to play the audio page by page."""
@@ -69,6 +64,7 @@ def play_audio(pages):
             st.audio(audio_file, format="audio/mp3")
             st.session_state.current_page += 1
             time.sleep(1)  # Add delay for sequential audio processing
+
 
 def main():
     """Main function to run the Streamlit app."""
@@ -90,15 +86,14 @@ def main():
 
             # Control Play/Stop buttons
             if st.session_state.is_playing:
-                stop_button = st.button("Stop Audio")
-                if stop_button:
+                if st.button("Stop Audio"):
                     st.session_state.is_playing = False
                     st.session_state.current_page = 0  # Reset the page counter
             else:
-                play_button = st.button("Play Audio")
-                if play_button:
+                if st.button("Play Audio"):
                     st.session_state.is_playing = True
                     play_audio(pages)  # Start playing audio sequentially
+
 
 if __name__ == "__main__":
     main()
