@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+from bs4 import BeautifulSoup
 import pdfplumber
 import io
 import time
