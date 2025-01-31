@@ -18,7 +18,7 @@ EMAIL = "a.onoja@surrey.ac.uk"
 INSTITUTION = "University of Surrey, UK"
 
 # Streamlit App Deployment URL (Replace with your actual Streamlit Cloud link)
-APP_URL = "https://your-username-your-app-name.streamlit.app/"
+APP_URL = "https://pdfaudioonoja-gpd5kkrbgzfwewkvtwmcvb.streamlit.app/"
 
 # Constants
 AVERAGE_WORDS_PER_MINUTE = 150
