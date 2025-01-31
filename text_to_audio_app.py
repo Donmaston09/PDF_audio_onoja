@@ -21,6 +21,8 @@ if 'is_playing' not in st.session_state:
     st.session_state.is_playing = False
 if 'current_page' not in st.session_state:
     st.session_state.current_page = 0
+if 'next_clicked' not in st.session_state:
+    st.session_state.next_clicked = False
 
 @st.cache_data
 def extract_main_text_from_pdf(uploaded_file):
@@ -59,10 +61,9 @@ def generate_audio(text, accent, voice_gender):
         }
 
         # Map voice gender to gTTS top-level domains (tld)
-        # Note: gTTS does not directly support male/female voices, but tld can influence voice characteristics
         voice_gender_map = {
-            "Male": "co.uk",  # British English domain (often male voice)
-            "Female": "com.au"  # Australian English domain (often female voice)
+            "Male": "co.uk",
+            "Female": "com.au"
         }
 
         # Convert text to speech using gTTS
@@ -91,10 +92,7 @@ def generate_audio(text, accent, voice_gender):
 
 def play_audio(pages, start_page, end_page, accent, voice_gender):
     """Plays the audio for selected pages with auto-next feature."""
-    while st.session_state.current_page < end_page:
-        if not st.session_state.is_playing:
-            break
-
+    if start_page <= st.session_state.current_page < end_page:
         text = pages[st.session_state.current_page]
         with st.spinner(f"Generating audio for Page {st.session_state.current_page + 1}..."):
             audio_file = generate_audio(text, accent, voice_gender)
@@ -102,7 +100,7 @@ def play_audio(pages, start_page, end_page, accent, voice_gender):
         if audio_file:
             st.audio(audio_file, format="audio/mp3")
 
-            # JavaScript to auto-click a hidden button after audio ends
+            # JavaScript to auto-click the next button
             autoplay_script = """
             <script>
                 var audio = document.querySelector("audio");
@@ -115,23 +113,6 @@ def play_audio(pages, start_page, end_page, accent, voice_gender):
             </script>
             """
             components.html(autoplay_script, height=0)
-
-            # Hidden button to trigger next page
-            if st.button("Next Page", key=f"next_{st.session_state.current_page}"):
-                st.session_state.current_page += 1
-                st.experimental_rerun()
-
-            time.sleep(1)  # Short delay before moving to next page
-
-def calculate_page_range(pages, listening_time):
-    """Calculates the number of pages that can be read within the selected listening time."""
-    total_words = sum(len(page.split()) for page in pages)
-    total_minutes = listening_time * 60  # Convert hours to minutes
-    words_per_page = total_words / len(pages)
-
-    # Calculate the number of pages that can be read in the selected time
-    pages_to_read = int((AVERAGE_WORDS_PER_MINUTE * total_minutes) / words_per_page)
-    return min(pages_to_read, len(pages))  # Ensure it doesn't exceed total pages
 
 def main():
     """Main function to run the Streamlit app."""
@@ -161,7 +142,7 @@ def main():
             listening_minutes = {"30 minutes": 0.5, "1 hour": 1, "2 hours": 2, "More than 2 hours": 3}[listening_time]
 
             # Calculate the number of pages to read based on listening time
-            pages_to_read = calculate_page_range(pages, listening_minutes)
+            pages_to_read = min(len(pages), int((AVERAGE_WORDS_PER_MINUTE * listening_minutes * 60) / (sum(len(page.split()) for page in pages) / len(pages))))
 
             # Display page selection slider
             st.subheader("Select Pages to Listen To")
@@ -169,7 +150,7 @@ def main():
                 "Select page range:",
                 min_value=1,
                 max_value=total_pages,
-                value=(1, pages_to_read),  # Default to calculated pages
+                value=(1, pages_to_read),
                 key="page_range"
             )
 
@@ -192,17 +173,26 @@ def main():
 
             # Play/Stop buttons
             if st.session_state.is_playing:
-                stop_button = st.button("Stop Audio")
-                if stop_button:
+                if st.button("Stop Audio", key="stop_audio"):
                     st.session_state.is_playing = False
-                    st.session_state.current_page = start_page  # Reset to the start of the selected range
-                    st.experimental_rerun()  # Refresh the app to stop audio playback
+                    st.session_state.current_page = start_page
+                    st.experimental_rerun()
             else:
-                play_button = st.button("Play Audio")
-                if play_button:
+                if st.button("Play Audio", key="play_audio"):
                     st.session_state.is_playing = True
-                    st.session_state.current_page = start_page  # Start from the selected page
-                    play_audio(pages, start_page, end_page + 1, accent, voice_gender)  # Play audio for the selected range
+                    st.session_state.current_page = start_page
+                    st.session_state.next_clicked = False
+                    st.experimental_rerun()
+
+            # Play audio and handle page navigation
+            if st.session_state.is_playing:
+                play_audio(pages, start_page, end_page + 1, accent, voice_gender)
+
+                # Hidden "Next Page" button (triggered automatically)
+                if st.button("Next Page", key="next_page_button"):
+                    if st.session_state.current_page < end_page:
+                        st.session_state.current_page += 1
+                        st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
