@@ -1,82 +1,104 @@
 import streamlit as st
-from gtts import gTTS
+import pyttsx3
+import os
+import pdfplumber
 import io
-from bs4 import BeautifulSoup
-import requests
+import time
 
-# Function to fetch papers from PubMed
-def fetch_papers(query, max_results=10):
-  url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term={query}&retmax={max_results}&retmode=json"
-  response = requests.get(url)
-  id_list = response.json()['esearchresult']['idlist']
+# App Information
+APP_NAME = "PDF Speech Assistant"
+AUTHOR = "Anthony Onoja"
+EMAIL = "a.onoja@surrey.ac.uk"
+INSTITUTION = "University of Surrey, UK"
 
-  papers = []
-  for pubmed_id in id_list:
-    fetch_url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={pubmed_id}&retmode=xml"
-    fetch_response = requests.get(fetch_url)
-    soup = BeautifulSoup(fetch_response.content, 'xml')
+# Initialize session state variables
+if 'is_playing' not in st.session_state:
+    st.session_state.is_playing = False
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = 0
+
+
+@st.cache_data
+def extract_text_from_pdf(uploaded_file):
+    """Extracts text from a PDF file using pdfplumber."""
     try:
-      title = soup.find('ArticleTitle').text
-      abstract = soup.find('AbstractText').text if soup.find('AbstractText') else 'No abstract available'
-      pubmed_central_id = soup.find('PubmedCentralId')  # Look for PubMed Central ID
-      pmcid = pubmed_central_id.text if pubmed_central_id else None  # Extract PMCID if available
+        with pdfplumber.open(uploaded_file) as pdf:
+            pages = []
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                pages.append(text)
+        return pages
+    except Exception as e:
+        st.error(f"Error extracting text: {e}")
+        return None
 
-      # Build link to full text (use PMCID if available, otherwise use PubMed link)
-      if pmcid:
-        full_text_link = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmcid}"
-      else:
-        full_text_link = f"https://pubmed.ncbi.nlm.nih.gov/{pubmed_id}/"
+def generate_audio(text):
+    """Generates and returns an audio file from text using pyttsx3 (offline TTS)."""
+    try:
+        # Initialize the TTS engine
+        engine = pyttsx3.init()
 
-      sections = {
-          'Title': title,
-          'Abstract': abstract,
-          'Full Text Link': full_text_link,
-      }
-      papers.append(sections)
-    except AttributeError:
-      continue
-  return papers
+        # Save the speech to a temporary file
+        audio_file_path = 'temp_audio.mp3'
+        engine.save_to_file(text, audio_file_path)
+        engine.runAndWait()
 
-# Streamlit app interface
-st.title("PaperVox - ")
-st.subheader("An AI-Powered Research Paper Audio Summaries App")
-st.subheader("Onoja Anthony")
-
-st.write("About: Tired of reading research papers? This app helps you explore scientific literature through audio. \n Simply enter your search query, and PaperVox will find relevant papers from PubMed. ")
-# Input for search query
-query = st.text_input("Enter your search query", "AI Machine Learning Biomedical Health Sciences")
-
-# Session state to store papers
-if 'papers' not in st.session_state:
-  st.session_state.papers = []
-
-# Button to search
-if st.button("Search"):
-  # Fetch papers
-  st.session_state.papers = fetch_papers(query)
-  st.session_state.search_done = True
-
-# Display papers if search is done
-if st.session_state.get('search_done', False):
-  # Filter papers
-  keywords = ["AI", "Machine Learning", "Biomedical", "Health Sciences"]
-  top_papers = st.session_state.papers[:5]
-
-  # Display top 5 papers
-  for i, paper in enumerate(top_papers):
-    st.write(f"**{i+1}. {paper['Title']}**")
-    st.write(f"*Abstract:* {paper['Abstract']}")
-    # Button to generate audio for the abstract
-    if st.button(f"Listen to Abstract {i+1}"):
-      text = paper['Abstract']
-      try:
-        # Generate audio using gTTS
-        tts = gTTS(text=text, lang='en')
+        # Read the audio file into a BytesIO stream
         audio_file = io.BytesIO()
-        tts.write_to_fp(audio_file)
-        audio_file.seek(0)
-        st.audio(audio_file, format='audio/mp3')
-      except Exception as e:
+        with open(audio_file_path, 'rb') as f:
+            audio_file.write(f.read())
+
+        os.remove(audio_file_path)  # Clean up temporary file
+        audio_file.seek(0)  # Reset file pointer
+
+        return audio_file
+    except Exception as e:
         st.error(f"Error generating audio: {e}")
-    st.write(f"*Full Text:* [Link]({paper['Full Text Link']})")
-    st.write("")
+        return None
+
+def play_audio(pages):
+    """Function to play the audio page by page."""
+    while st.session_state.current_page < len(pages):
+        if not st.session_state.is_playing:
+            break
+
+        text = pages[st.session_state.current_page]
+        audio_file = generate_audio(text)
+
+        if audio_file:
+            st.audio(audio_file, format="audio/mp3")
+            st.session_state.current_page += 1
+            time.sleep(1)  # Add delay for sequential audio processing
+
+def main():
+    """Main function to run the Streamlit app."""
+    st.title(APP_NAME)
+    st.write(f"Developed by {AUTHOR}, {INSTITUTION}")
+    st.write(f"Contact: {EMAIL}")
+
+    uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+
+    if uploaded_file is not None:
+        with st.spinner("Extracting text from PDF..."):
+            pages = extract_text_from_pdf(uploaded_file)
+
+        if pages:
+            # Display page-by-page extracted text
+            for i, text in enumerate(pages):
+                st.subheader(f"Page {i + 1}")
+                st.text_area(f"Extracted Text from Page {i + 1}:", text, height=150)
+
+            # Control Play/Stop buttons
+            if st.session_state.is_playing:
+                stop_button = st.button("Stop Audio")
+                if stop_button:
+                    st.session_state.is_playing = False
+                    st.session_state.current_page = 0  # Reset the page counter
+            else:
+                play_button = st.button("Play Audio")
+                if play_button:
+                    st.session_state.is_playing = True
+                    play_audio(pages)  # Start playing audio sequentially
+
+if __name__ == "__main__":
+    main()
